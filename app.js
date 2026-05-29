@@ -516,13 +516,13 @@ function positionPieceInPool(piece, x, y) {
   piece.element.style.opacity = "1";
 }
 
-function layoutPiecesInPool(pieces, retry = 0) {
+function layoutPiecesInPool(pieces, retry = 0, compactLayout = false) {
   const pool = els.trayPieces;
   const poolW = pool.clientWidth;
   const poolH = pool.clientHeight;
 
   if ((poolW < 40 || poolH < 40) && retry < 8) {
-    requestAnimationFrame(() => layoutPiecesInPool(pieces, retry + 1));
+    requestAnimationFrame(() => layoutPiecesInPool(pieces, retry + 1, compactLayout));
     return;
   }
 
@@ -550,6 +550,9 @@ function layoutPiecesInPool(pieces, retry = 0) {
   pool.style.minWidth = "";
   pool.style.minHeight = `${Math.max(poolH, contentHeight)}px`;
 
+  const jitterX = compactLayout ? 2 : isMobileLayout() ? 6 : 12;
+  const jitterY = compactLayout ? 2 : isMobileLayout() ? 4 : 8;
+
   pieces.forEach((piece, index) => {
     piece.element.classList.remove("placed");
     pool.appendChild(piece.element);
@@ -560,11 +563,11 @@ function layoutPiecesInPool(pieces, retry = 0) {
       padding +
       col * (cellW + gap) +
       (cellW - piece.width) / 2 +
-      (Math.random() - 0.5) * (isMobileLayout() ? 6 : 12);
+      (compactLayout ? 0 : (Math.random() - 0.5) * jitterX);
     const y =
       padding +
       row * rowH +
-      (Math.random() - 0.5) * (isMobileLayout() ? 4 : 8);
+      (compactLayout ? 0 : (Math.random() - 0.5) * jitterY);
 
     positionPieceInPool(piece, x, y);
   });
@@ -575,8 +578,12 @@ function relayoutPoolPieces(reshuffle = false) {
   if (reshuffle) {
     unplaced = shuffleArray(unplaced);
   }
-  layoutPiecesInPool(unplaced);
+  layoutPiecesInPool(unplaced, 0, !reshuffle);
   updatePoolHint(unplaced.length);
+
+  if (!reshuffle && unplaced.length > 0) {
+    els.trayPieces.scrollTop = 0;
+  }
 }
 
 function updatePoolHint(count) {
@@ -811,6 +818,8 @@ function placePiece(piece, slot) {
 
   if (state.placedCount === state.pieces.length) {
     onWin();
+  } else {
+    requestAnimationFrame(() => relayoutPoolPieces(false));
   }
 }
 
