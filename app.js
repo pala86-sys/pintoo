@@ -98,6 +98,8 @@ function createInitialState() {
     pieceMap: null,
     slotGeometry: null,
     highlightedSlot: null,
+    highlightIsCorrect: false,
+    poolOrder: [],
     placedCount: 0,
     timerInterval: null,
     startTime: null,
@@ -430,6 +432,7 @@ function setupGame() {
         height,
         padding,
         placed: false,
+        placedAt: null,
         slotEl: slot,
       };
 
@@ -574,14 +577,23 @@ function layoutPiecesInPool(pieces, retry = 0, compactLayout = false) {
 }
 
 function relayoutPoolPieces(reshuffle = false) {
-  let unplaced = state.pieces.filter((p) => !p.placed);
-  if (reshuffle) {
-    unplaced = shuffleArray(unplaced);
-  }
-  layoutPiecesInPool(unplaced, 0, !reshuffle);
-  updatePoolHint(unplaced.length);
+  const unplacedSet = state.pieces.filter((p) => !p.placed);
 
-  if (!reshuffle && unplaced.length > 0) {
+  if (reshuffle) {
+    state.poolOrder = shuffleArray(unplacedSet);
+  } else {
+    state.poolOrder = state.poolOrder.filter((p) => !p.placed);
+    unplacedSet.forEach((p) => {
+      if (!state.poolOrder.includes(p)) {
+        state.poolOrder.push(p);
+      }
+    });
+  }
+
+  layoutPiecesInPool(state.poolOrder, 0, !reshuffle);
+  updatePoolHint(unplacedSet.length);
+
+  if (!reshuffle && state.poolOrder.length > 0) {
     els.trayPieces.scrollTop = 0;
   }
 }
@@ -614,9 +626,29 @@ function enableDrag(piece) {
   piece.element.addEventListener("pointerdown", (e) => startDrag(piece, e));
 }
 
+function unplacePiece(piece) {
+  if (!piece.placed || !piece.placedAt) return;
+
+  const slot = state.slotMap[piece.placedAt.row]?.[piece.placedAt.col];
+  if (slot) {
+    slot.piece = null;
+    slot.element.classList.remove("filled");
+  }
+
+  piece.placed = false;
+  piece.placedAt = null;
+  piece.element.classList.remove("placed", "placed-wrong", "placed-correct");
+  state.placedCount = Math.max(0, state.placedCount - 1);
+  updateProgress();
+}
+
 function startDrag(piece, e) {
-  if (piece.placed || state.dragging) return;
+  if (state.dragging) return;
   e.preventDefault();
+
+  if (piece.placed) {
+    unplacePiece(piece);
+  }
 
   const el = piece.element;
   el.setPointerCapture(e.pointerId);
@@ -692,7 +724,7 @@ function onGlobalPointerUp(e) {
 }
 
 function endDragVisuals(el) {
-  el.classList.remove("dragging", "can-snap");
+  el.classList.remove("dragging", "can-snap", "can-snap-wrong");
   document.body.classList.remove("is-dragging");
 }
 
@@ -716,19 +748,36 @@ function getSlotOverlapRatio(pieceRect, slotRect) {
   return slotArea > 0 ? overlapArea / slotArea : 0;
 }
 
-function isPieceOverOwnSlot(piece, forHighlight) {
-  const slot = state.slotMap?.[piece.row]?.[piece.col];
-  if (!slot || slot.piece) return false;
-
+function findBestEmptySlot(piece, forHighlight) {
   const pieceRect = piece.element.getBoundingClientRect();
-  const slotRect = slot.element.getBoundingClientRect();
-  const ratio = getSlotOverlapRatio(pieceRect, slotRect);
   const threshold = forHighlight ? 0.18 : 0.28;
-  return ratio >= threshold;
+  let bestSlot = null;
+  let bestRatio = 0;
+
+  for (let row = 0; row < state.rows; row++) {
+    for (let col = 0; col < state.cols; col++) {
+      const slot = state.slotMap[row][col];
+      if (!slot || slot.piece) continue;
+
+      const slotRect = slot.element.getBoundingClientRect();
+      const ratio = getSlotOverlapRatio(pieceRect, slotRect);
+      if (ratio >= threshold && ratio > bestRatio) {
+        bestRatio = ratio;
+        bestSlot = slot;
+      }
+    }
+  }
+
+  return bestSlot;
 }
 
-function setPieceSnapHint(piece, active) {
-  piece.element.classList.toggle("can-snap", active);
+function isCorrectSlotForPiece(piece, slot) {
+  return slot.row === piece.row && slot.col === piece.col;
+}
+
+function setPieceSnapHint(piece, active, isCorrect = true) {
+  piece.element.classList.toggle("can-snap", active && isCorrect);
+  piece.element.classList.toggle("can-snap-wrong", active && !isCorrect);
 }
 
 function getBoardSlotPosition(row, col) {
@@ -750,45 +799,40 @@ function getBoardSlotPosition(row, col) {
 function highlightNearestSlot(piece) {
   if (!state.dragging) return;
 
-  const slot = state.slotMap?.[piece.row]?.[piece.col];
-  if (!slot || slot.piece) {
-    setPieceSnapHint(piece, false);
-    clearSlotHighlights();
-    return;
-  }
-
-  const shouldHighlight = isPieceOverOwnSlot(piece, true);
-  setPieceSnapHint(piece, shouldHighlight);
+  const slot = findBestEmptySlot(piece, true);
+  const shouldHighlight = Boolean(slot);
+  setPieceSnapHint(piece, shouldHighlight, slot ? isCorrectSlotForPiece(piece, slot) : true);
 
   if (!shouldHighlight) {
     clearSlotHighlights();
     return;
   }
 
-  if (state.highlightedSlot !== slot) {
+  const isCorrect = isCorrectSlotForPiece(piece, slot);
+  if (state.highlightedSlot !== slot || state.highlightIsCorrect !== isCorrect) {
     clearSlotHighlights();
     state.highlightedSlot = slot;
-    state.highlightedSlot.element.classList.add("highlight");
+    state.highlightIsCorrect = isCorrect;
+    state.highlightedSlot.element.classList.add(
+      isCorrect ? "highlight" : "highlight-wrong"
+    );
   }
 }
 
 function clearSlotHighlights() {
   if (state.dragging?.piece) {
-    setPieceSnapHint(state.dragging.piece, false);
+    setPieceSnapHint(state.dragging.piece, false, true);
   }
   if (state.highlightedSlot) {
-    state.highlightedSlot.element.classList.remove("highlight");
+    state.highlightedSlot.element.classList.remove("highlight", "highlight-wrong");
     state.highlightedSlot = null;
+    state.highlightIsCorrect = false;
   }
 }
 
 function findSnapTarget(piece) {
   if (!state.dragging) return null;
-
-  const slot = state.slotMap?.[piece.row]?.[piece.col];
-  if (!slot || slot.piece) return null;
-
-  return isPieceOverOwnSlot(piece, false) ? slot : null;
+  return findBestEmptySlot(piece, false);
 }
 
 function trySnapPiece(piece) {
@@ -800,13 +844,18 @@ function trySnapPiece(piece) {
 }
 
 function placePiece(piece, slot) {
+  const isCorrect = isCorrectSlotForPiece(piece, slot);
+
   piece.placed = true;
+  piece.placedAt = { row: slot.row, col: slot.col };
   slot.piece = piece;
   slot.element.classList.add("filled");
   piece.element.classList.add("placed");
+  piece.element.classList.toggle("placed-correct", isCorrect);
+  piece.element.classList.toggle("placed-wrong", !isCorrect);
   piece.slotEl = slot.element;
 
-  const pos = getBoardSlotPosition(piece.row, piece.col);
+  const pos = getBoardSlotPosition(slot.row, slot.col);
   els.board.appendChild(piece.element);
   piece.element.style.position = "absolute";
   piece.element.style.left = `${pos.left}px`;
@@ -814,9 +863,10 @@ function placePiece(piece, slot) {
   piece.element.style.transform = "none";
 
   state.placedCount++;
+  state.poolOrder = state.poolOrder.filter((p) => p !== piece);
   updateProgress();
 
-  if (state.placedCount === state.pieces.length) {
+  if (checkPuzzleComplete()) {
     onWin();
   } else {
     requestAnimationFrame(() => relayoutPoolPieces(false));
@@ -824,8 +874,23 @@ function placePiece(piece, slot) {
 }
 
 function returnPieceToPool(piece) {
+  if (!state.poolOrder.includes(piece)) {
+    state.poolOrder.push(piece);
+  }
   piece.element.style.transform = "none";
+  piece.element.classList.remove("placed-wrong", "placed-correct");
   relayoutPoolPieces(false);
+}
+
+function checkPuzzleComplete() {
+  if (state.placedCount !== state.pieces.length) return false;
+  return state.pieces.every(
+    (p) =>
+      p.placed &&
+      p.placedAt &&
+      p.placedAt.row === p.row &&
+      p.placedAt.col === p.col
+  );
 }
 
 // ——— Timer & progress ———
@@ -855,7 +920,14 @@ function formatTime(seconds) {
 }
 
 function updateProgress() {
-  els.progressStat.textContent = `${state.placedCount} / ${state.pieces.length}`;
+  const correct = state.pieces.filter(
+    (p) =>
+      p.placed &&
+      p.placedAt &&
+      p.placedAt.row === p.row &&
+      p.placedAt.col === p.col
+  ).length;
+  els.progressStat.textContent = `${correct} / ${state.pieces.length}`;
   updatePoolHint(state.pieces.length - state.placedCount);
 }
 

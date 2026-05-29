@@ -532,6 +532,13 @@ input[type="range"]::-webkit-slider-thumb:hover {
   z-index: 3;
 }
 
+.slot.highlight-wrong {
+  background: rgba(251, 191, 36, 0.12);
+  border-color: #fbbf24;
+  box-shadow: inset 0 0 0 2px rgba(251, 191, 36, 0.45);
+  z-index: 3;
+}
+
 .reference-panel.hint-flash {
   box-shadow: 0 0 0 2px var(--accent), 0 0 24px var(--accent-glow);
 }
@@ -588,10 +595,25 @@ body.is-dragging .piece:not(.dragging) {
     0 10px 28px rgba(0, 0, 0, 0.5);
 }
 
+.piece.dragging.can-snap-wrong {
+  box-shadow:
+    0 0 0 3px #fbbf24,
+    0 0 14px rgba(251, 191, 36, 0.35),
+    0 10px 28px rgba(0, 0, 0, 0.5);
+}
+
 .piece.placed {
-  cursor: default;
+  cursor: grab;
   box-shadow: none;
   z-index: 1;
+}
+
+.piece.placed-wrong {
+  box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.55);
+}
+
+.piece.placed-correct {
+  box-shadow: none;
 }
 
 .piece img {
