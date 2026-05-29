@@ -973,8 +973,8 @@ body.is-dragging .piece:not(.dragging) {
 
   .piece-pool {
     flex: 1;
-    min-height: min(38vh, 260px);
-    max-height: 42vh;
+    min-height: min(44vh, 320px);
+    max-height: 48vh;
     margin-top: 0.25rem;
     border-radius: var(--radius);
     background: var(--bg-elevated);
@@ -983,24 +983,31 @@ body.is-dragging .piece:not(.dragging) {
   }
 
   .piece-pool::after {
-    content: "";
+    content: "↓ 滑動看更多";
     position: absolute;
     bottom: 0;
     left: 0;
     right: 0;
-    height: 28px;
-    background: linear-gradient(transparent, var(--bg-elevated));
+    height: 32px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: 4px;
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    background: linear-gradient(transparent, var(--bg-elevated) 55%);
     pointer-events: none;
     border-radius: 0 0 var(--radius) var(--radius);
   }
 
   .piece-pool-inner {
-    min-height: min(38vh, 260px);
-    max-height: 42vh;
+    min-height: min(44vh, 320px);
+    max-height: 48vh;
     overflow-x: hidden;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
+    touch-action: pan-y;
   }
 
   .modal-content {

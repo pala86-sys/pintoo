@@ -492,76 +492,104 @@ function shuffleArray(items) {
 
 function getPoolBounds() {
   const pool = els.trayPieces;
+  const visibleH = pool.clientHeight;
+  const styledH = parseFloat(pool.style.minHeight) || 0;
   return {
     width: pool.clientWidth,
-    height: pool.clientHeight,
+    visibleHeight: visibleH,
+    contentHeight: Math.max(visibleH, styledH, pool.scrollHeight),
   };
 }
 
 function positionPieceInPool(piece, x, y) {
-  const { width: poolW, height: poolH } = getPoolBounds();
+  const pool = els.trayPieces;
+  const { width: poolW, contentHeight } = getPoolBounds();
   const maxX = Math.max(0, poolW - piece.width);
-  const maxY = Math.max(0, poolH - piece.height);
+  const maxY = Math.max(0, contentHeight - piece.height);
   const clampedX = Math.min(Math.max(0, x), maxX);
   const clampedY = Math.min(Math.max(0, y), maxY);
   piece.element.style.position = "absolute";
   piece.element.style.left = `${clampedX}px`;
   piece.element.style.top = `${clampedY}px`;
   piece.element.style.transform = "none";
+  piece.element.style.visibility = "visible";
+  piece.element.style.opacity = "1";
 }
 
-function scatterPieceInPool(piece, index = 0, total = 1) {
-  const { width: poolW, height: poolH } = getPoolBounds();
-  if (poolW < 40 || poolH < 40) {
-    requestAnimationFrame(() => scatterPieceInPool(piece, index, total));
+function layoutPiecesInPool(pieces, retry = 0) {
+  const pool = els.trayPieces;
+  const poolW = pool.clientWidth;
+  const poolH = pool.clientHeight;
+
+  if ((poolW < 40 || poolH < 40) && retry < 8) {
+    requestAnimationFrame(() => layoutPiecesInPool(pieces, retry + 1));
+    return;
+  }
+
+  if (pieces.length === 0) {
+    pool.style.minWidth = "";
+    pool.style.minHeight = "";
     return;
   }
 
   const padding = isMobileLayout() ? 8 : 10;
   const gap = isMobileLayout() ? 6 : 8;
+  const sample = pieces[0];
+  const maxCols = isMobileLayout()
+    ? 4
+    : Math.floor((poolW - padding * 2) / (sample.width + gap));
   const cols = Math.max(
-    isMobileLayout() ? 3 : 1,
-    Math.floor((poolW - padding * 2) / (piece.width + gap))
+    1,
+    Math.min(maxCols, Math.floor((poolW - padding * 2) / (sample.width + gap)))
   );
-  const col = index % cols;
-  const row = Math.floor(index / cols);
-  const cellW = (poolW - padding * 2 - gap * (cols - 1)) / cols;
-  const rowH = piece.height + gap;
-  const totalRows = Math.ceil(total / cols);
-
-  const x =
-    padding +
-    col * (cellW + gap) +
-    (cellW - piece.width) / 2 +
-    (Math.random() - 0.5) * (isMobileLayout() ? 6 : 12);
-  const y =
-    padding +
-    row * rowH +
-    (Math.random() - 0.5) * (isMobileLayout() ? 4 : 8);
-
+  const rowH = sample.height + gap;
+  const totalRows = Math.ceil(pieces.length / cols);
   const contentHeight = padding * 2 + totalRows * rowH;
-  els.trayPieces.style.minWidth = "";
-  els.trayPieces.style.minHeight = `${Math.max(poolH, contentHeight)}px`;
-  positionPieceInPool(piece, x, y);
+  const cellW = (poolW - padding * 2 - gap * (cols - 1)) / cols;
+
+  pool.style.minWidth = "";
+  pool.style.minHeight = `${Math.max(poolH, contentHeight)}px`;
+
+  pieces.forEach((piece, index) => {
+    piece.element.classList.remove("placed");
+    pool.appendChild(piece.element);
+
+    const col = index % cols;
+    const row = Math.floor(index / cols);
+    const x =
+      padding +
+      col * (cellW + gap) +
+      (cellW - piece.width) / 2 +
+      (Math.random() - 0.5) * (isMobileLayout() ? 6 : 12);
+    const y =
+      padding +
+      row * rowH +
+      (Math.random() - 0.5) * (isMobileLayout() ? 4 : 8);
+
+    positionPieceInPool(piece, x, y);
+  });
+}
+
+function relayoutPoolPieces(reshuffle = false) {
+  let unplaced = state.pieces.filter((p) => !p.placed);
+  if (reshuffle) {
+    unplaced = shuffleArray(unplaced);
+  }
+  layoutPiecesInPool(unplaced);
+  updatePoolHint(unplaced.length);
+}
+
+function updatePoolHint(count) {
+  els.trayHint.textContent =
+    count > 0
+      ? isMobileLayout()
+        ? `還有 ${count} 片 · 上下滑動瀏覽全部碎片`
+        : `還有 ${count} 片 · 拖曳到上方拼圖板`
+      : "";
 }
 
 function shuffleTrayPieces() {
-  const unplaced = shuffleArray(state.pieces.filter((p) => !p.placed));
-  els.trayPieces.style.minWidth = "";
-  els.trayPieces.style.minHeight = "";
-
-  unplaced.forEach((piece, i) => {
-    piece.element.classList.remove("placed");
-    els.trayPieces.appendChild(piece.element);
-    scatterPieceInPool(piece, i, unplaced.length);
-  });
-
-  els.trayHint.textContent =
-    unplaced.length > 0
-      ? isMobileLayout()
-        ? `還有 ${unplaced.length} 片 · 上下滑動瀏覽，拖到上方拼圖板`
-        : `還有 ${unplaced.length} 片 · 拖曳到上方拼圖板`
-      : "";
+  relayoutPoolPieces(true);
 }
 
 // ——— Drag & drop ———
@@ -649,7 +677,7 @@ function onGlobalPointerUp(e) {
 
   const placed = trySnapPiece(piece, e.clientX, e.clientY);
   if (!placed) {
-    returnPieceToPool(piece, e.clientX, e.clientY);
+    returnPieceToPool(piece);
   }
 
   state.dragging = null;
@@ -769,25 +797,9 @@ function placePiece(piece, slot) {
   }
 }
 
-function returnPieceToPool(piece, clientX, clientY) {
-  els.trayPieces.appendChild(piece.element);
-  const poolRect = els.trayPieces.getBoundingClientRect();
-
-  const inPool =
-    clientX >= poolRect.left &&
-    clientX <= poolRect.right &&
-    clientY >= poolRect.top &&
-    clientY <= poolRect.bottom;
-
-  if (inPool && state.dragging) {
-    const x = clientX - poolRect.left - state.dragging.offsetX;
-    const y = clientY - poolRect.top - state.dragging.offsetY;
-    positionPieceInPool(piece, x, y);
-  } else {
-    const unplaced = state.pieces.filter((p) => !p.placed);
-    const index = unplaced.findIndex((p) => p === piece);
-    scatterPieceInPool(piece, Math.max(0, index), unplaced.length);
-  }
+function returnPieceToPool(piece) {
+  piece.element.style.transform = "none";
+  relayoutPoolPieces(false);
 }
 
 // ——— Timer & progress ———
@@ -818,13 +830,7 @@ function formatTime(seconds) {
 
 function updateProgress() {
   els.progressStat.textContent = `${state.placedCount} / ${state.pieces.length}`;
-  const remaining = state.pieces.length - state.placedCount;
-  els.trayHint.textContent =
-    remaining > 0
-      ? isMobileLayout()
-        ? `還有 ${remaining} 片 · 上下滑動瀏覽，拖到拼圖板`
-        : `還有 ${remaining} 片 · 拖曳到上方拼圖板`
-      : "";
+  updatePoolHint(state.pieces.length - state.placedCount);
 }
 
 // ——— Win & navigation ———
