@@ -481,6 +481,15 @@ function updateSlotGeometry() {
   clearSlotHighlights();
 }
 
+function shuffleArray(items) {
+  const arr = [...items];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
 function getPoolBounds() {
   const pool = els.trayPieces;
   return {
@@ -508,31 +517,38 @@ function scatterPieceInPool(piece, index = 0, total = 1) {
     return;
   }
 
-  if (isMobileLayout()) {
-    const gap = 10;
-    const startX = 12;
-    const x = startX + index * (piece.width + gap);
-    const y = Math.max(8, (poolH - piece.height) / 2);
-    const contentWidth = x + piece.width + 12;
-    els.trayPieces.style.minWidth = `${Math.max(poolW, contentWidth)}px`;
-    positionPieceInPool(piece, x, y);
-    return;
-  }
-
-  const cols = Math.max(1, Math.floor(poolW / (piece.width + 8)));
+  const padding = isMobileLayout() ? 8 : 10;
+  const gap = isMobileLayout() ? 6 : 8;
+  const cols = Math.max(
+    isMobileLayout() ? 3 : 1,
+    Math.floor((poolW - padding * 2) / (piece.width + gap))
+  );
   const col = index % cols;
   const row = Math.floor(index / cols);
-  const cellW = poolW / cols;
-  const cellH = Math.max(piece.height + 8, poolH / Math.ceil(total / cols));
+  const cellW = (poolW - padding * 2 - gap * (cols - 1)) / cols;
+  const rowH = piece.height + gap;
+  const totalRows = Math.ceil(total / cols);
 
-  const x = col * cellW + (cellW - piece.width) / 2 + (Math.random() - 0.5) * 12;
-  const y = row * cellH + (cellH - piece.height) / 2 + (Math.random() - 0.5) * 12;
+  const x =
+    padding +
+    col * (cellW + gap) +
+    (cellW - piece.width) / 2 +
+    (Math.random() - 0.5) * (isMobileLayout() ? 6 : 12);
+  const y =
+    padding +
+    row * rowH +
+    (Math.random() - 0.5) * (isMobileLayout() ? 4 : 8);
+
+  const contentHeight = padding * 2 + totalRows * rowH;
+  els.trayPieces.style.minWidth = "";
+  els.trayPieces.style.minHeight = `${Math.max(poolH, contentHeight)}px`;
   positionPieceInPool(piece, x, y);
 }
 
 function shuffleTrayPieces() {
-  const unplaced = state.pieces.filter((p) => !p.placed);
+  const unplaced = shuffleArray(state.pieces.filter((p) => !p.placed));
   els.trayPieces.style.minWidth = "";
+  els.trayPieces.style.minHeight = "";
 
   unplaced.forEach((piece, i) => {
     piece.element.classList.remove("placed");
@@ -543,7 +559,7 @@ function shuffleTrayPieces() {
   els.trayHint.textContent =
     unplaced.length > 0
       ? isMobileLayout()
-        ? `還有 ${unplaced.length} 片 · 左右滑動選片，拖到上方拼圖板`
+        ? `還有 ${unplaced.length} 片 · 上下滑動瀏覽，拖到上方拼圖板`
         : `還有 ${unplaced.length} 片 · 拖曳到上方拼圖板`
       : "";
 }
@@ -806,7 +822,7 @@ function updateProgress() {
   els.trayHint.textContent =
     remaining > 0
       ? isMobileLayout()
-        ? `還有 ${remaining} 片 · 左右滑動選片，拖到拼圖板`
+        ? `還有 ${remaining} 片 · 上下滑動瀏覽，拖到拼圖板`
         : `還有 ${remaining} 片 · 拖曳到上方拼圖板`
       : "";
 }

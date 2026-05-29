@@ -973,24 +973,34 @@ body.is-dragging .piece:not(.dragging) {
 
   .piece-pool {
     flex: 1;
-    min-height: min(32vh, 220px);
-    max-height: none;
+    min-height: min(38vh, 260px);
+    max-height: 42vh;
     margin-top: 0.25rem;
     border-radius: var(--radius);
     background: var(--bg-elevated);
     border-style: solid;
+    position: relative;
+  }
+
+  .piece-pool::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 28px;
+    background: linear-gradient(transparent, var(--bg-elevated));
+    pointer-events: none;
+    border-radius: 0 0 var(--radius) var(--radius);
   }
 
   .piece-pool-inner {
-    min-height: min(32vh, 220px);
-    overflow-x: auto;
-    overflow-y: hidden;
+    min-height: min(38vh, 260px);
+    max-height: 42vh;
+    overflow-x: hidden;
+    overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    scroll-snap-type: x proximity;
-  }
-
-  .piece-pool-inner .piece {
-    scroll-snap-align: start;
+    overscroll-behavior: contain;
   }
 
   .modal-content {
