@@ -241,6 +241,53 @@ function getPieceEdges(row, col, rows, cols, edgeMap) {
   return { top, right, bottom, left };
 }
 
+function edgesCompatible(edgeA, edgeB) {
+  return edgeA + edgeB === 0;
+}
+
+function getPlacedNeighborAt(slotRow, slotCol, dRow, dCol) {
+  const r = slotRow + dRow;
+  const c = slotCol + dCol;
+  if (r < 0 || r >= state.rows || c < 0 || c >= state.cols) return null;
+  return state.slotMap[r][c]?.piece ?? null;
+}
+
+/** Piece may sit in slot only if tabs/blanks match placed neighbors and board borders. */
+function canPlacePieceAtSlot(piece, slotRow, slotCol) {
+  const edges = piece.edges;
+  const { rows, cols } = state;
+
+  if (slotRow === 0 && edges.top !== 0) return false;
+  if (slotCol === 0 && edges.left !== 0) return false;
+  if (slotRow === rows - 1 && edges.bottom !== 0) return false;
+  if (slotCol === cols - 1 && edges.right !== 0) return false;
+
+  const topNeighbor = getPlacedNeighborAt(slotRow, slotCol, -1, 0);
+  if (topNeighbor && !edgesCompatible(edges.top, topNeighbor.edges.bottom)) {
+    return false;
+  }
+
+  const rightNeighbor = getPlacedNeighborAt(slotRow, slotCol, 0, 1);
+  if (rightNeighbor && !edgesCompatible(edges.right, rightNeighbor.edges.left)) {
+    return false;
+  }
+
+  const bottomNeighbor = getPlacedNeighborAt(slotRow, slotCol, 1, 0);
+  if (
+    bottomNeighbor &&
+    !edgesCompatible(edges.bottom, bottomNeighbor.edges.top)
+  ) {
+    return false;
+  }
+
+  const leftNeighbor = getPlacedNeighborAt(slotRow, slotCol, 0, -1);
+  if (leftNeighbor && !edgesCompatible(edges.left, leftNeighbor.edges.right)) {
+    return false;
+  }
+
+  return true;
+}
+
 // ——— Jigsaw path drawing ———
 
 function drawJigsawEdge(ctx, x1, y1, x2, y2, type) {
@@ -426,6 +473,7 @@ function setupGame() {
       const piece = {
         row,
         col,
+        edges,
         element: pieceEl,
         img,
         width,
@@ -758,6 +806,7 @@ function findBestEmptySlot(piece, forHighlight) {
     for (let col = 0; col < state.cols; col++) {
       const slot = state.slotMap[row][col];
       if (!slot || slot.piece) continue;
+      if (!canPlacePieceAtSlot(piece, row, col)) continue;
 
       const slotRect = slot.element.getBoundingClientRect();
       const ratio = getSlotOverlapRatio(pieceRect, slotRect);
