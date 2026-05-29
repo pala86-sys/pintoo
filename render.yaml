@@ -1,0 +1,8 @@
+# Render Blueprint — 靜態網站部署
+# https://render.com/docs/static-sites
+services:
+  - type: web
+    name: pintoo
+    runtime: static
+    buildCommand: ""
+    staticPublishPath: .
