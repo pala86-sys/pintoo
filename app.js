@@ -685,7 +685,7 @@ function onGlobalPointerUp(e) {
 }
 
 function endDragVisuals(el) {
-  el.classList.remove("dragging");
+  el.classList.remove("dragging", "can-snap");
   document.body.classList.remove("is-dragging");
 }
 
@@ -696,29 +696,32 @@ function maybeHighlightWhileDrag(force = false) {
   highlightNearestSlot(state.dragging.piece);
 }
 
-function getDragPieceCenter(piece) {
-  const rect = piece.element.getBoundingClientRect();
-  return {
-    x: rect.left + rect.width / 2,
-    y: rect.top + rect.height / 2,
-  };
+function getSlotOverlapRatio(pieceRect, slotRect) {
+  const overlapLeft = Math.max(pieceRect.left, slotRect.left);
+  const overlapRight = Math.min(pieceRect.right, slotRect.right);
+  const overlapTop = Math.max(pieceRect.top, slotRect.top);
+  const overlapBottom = Math.min(pieceRect.bottom, slotRect.bottom);
+
+  if (overlapLeft >= overlapRight || overlapTop >= overlapBottom) return 0;
+
+  const overlapArea = (overlapRight - overlapLeft) * (overlapBottom - overlapTop);
+  const slotArea = slotRect.width * slotRect.height;
+  return slotArea > 0 ? overlapArea / slotArea : 0;
 }
 
-function isPieceOverOwnSlot(piece, center, forHighlight) {
-  const geo = state.slotGeometry?.[piece.row]?.[piece.col];
+function isPieceOverOwnSlot(piece, forHighlight) {
   const slot = state.slotMap?.[piece.row]?.[piece.col];
-  if (!geo || !slot || slot.piece) return false;
+  if (!slot || slot.piece) return false;
 
-  const w = geo.right - geo.left;
-  const h = geo.bottom - geo.top;
-  const expand = Math.min(w, h) * (forHighlight ? 0.12 : 0.08);
+  const pieceRect = piece.element.getBoundingClientRect();
+  const slotRect = slot.element.getBoundingClientRect();
+  const ratio = getSlotOverlapRatio(pieceRect, slotRect);
+  const threshold = forHighlight ? 0.18 : 0.28;
+  return ratio >= threshold;
+}
 
-  return (
-    center.x >= geo.left - expand &&
-    center.x <= geo.right + expand &&
-    center.y >= geo.top - expand &&
-    center.y <= geo.bottom + expand
-  );
+function setPieceSnapHint(piece, active) {
+  piece.element.classList.toggle("can-snap", active);
 }
 
 function getBoardSlotPosition(row, col) {
@@ -742,12 +745,13 @@ function highlightNearestSlot(piece) {
 
   const slot = state.slotMap?.[piece.row]?.[piece.col];
   if (!slot || slot.piece) {
+    setPieceSnapHint(piece, false);
     clearSlotHighlights();
     return;
   }
 
-  const center = getDragPieceCenter(piece);
-  const shouldHighlight = isPieceOverOwnSlot(piece, center, true);
+  const shouldHighlight = isPieceOverOwnSlot(piece, true);
+  setPieceSnapHint(piece, shouldHighlight);
 
   if (!shouldHighlight) {
     clearSlotHighlights();
@@ -762,6 +766,9 @@ function highlightNearestSlot(piece) {
 }
 
 function clearSlotHighlights() {
+  if (state.dragging?.piece) {
+    setPieceSnapHint(state.dragging.piece, false);
+  }
   if (state.highlightedSlot) {
     state.highlightedSlot.element.classList.remove("highlight");
     state.highlightedSlot = null;
@@ -774,8 +781,7 @@ function findSnapTarget(piece) {
   const slot = state.slotMap?.[piece.row]?.[piece.col];
   if (!slot || slot.piece) return null;
 
-  const center = getDragPieceCenter(piece);
-  return isPieceOverOwnSlot(piece, center, false) ? slot : null;
+  return isPieceOverOwnSlot(piece, false) ? slot : null;
 }
 
 function trySnapPiece(piece) {
