@@ -468,10 +468,10 @@ function updateSlotGeometry() {
 
       const slotRect = slot.element.getBoundingClientRect();
       state.slotGeometry[row][col] = {
-        cx: slotRect.left + slotRect.width / 2,
-        cy: slotRect.top + slotRect.height / 2,
-        threshold:
-          getSnapDistance() + Math.min(slotRect.width, slotRect.height) * 0.4,
+        left: slotRect.left,
+        top: slotRect.top,
+        right: slotRect.right,
+        bottom: slotRect.bottom,
         boardLeft: slotRect.left - boardRect.left - piece.padding,
         boardTop: slotRect.top - boardRect.top - piece.padding,
       };
@@ -641,7 +641,8 @@ function startDrag(piece, e) {
 
   els.dragLayer.appendChild(el);
   applyDragTransform(x, y);
-  maybeHighlightWhileDrag(e.clientX, e.clientY, true);
+  updateSlotGeometry();
+  maybeHighlightWhileDrag(true);
 }
 
 function applyDragTransform(x, y) {
@@ -662,7 +663,7 @@ function onGlobalPointerMove(e) {
   const y = last.clientY - drag.offsetY;
 
   applyDragTransform(x, y);
-  maybeHighlightWhileDrag(last.clientX, last.clientY);
+  maybeHighlightWhileDrag();
 }
 
 function onGlobalPointerUp(e) {
@@ -675,7 +676,7 @@ function onGlobalPointerUp(e) {
 
   clearSlotHighlights();
 
-  const placed = trySnapPiece(piece, e.clientX, e.clientY);
+  const placed = trySnapPiece(piece);
   if (!placed) {
     returnPieceToPool(piece);
   }
@@ -688,11 +689,36 @@ function endDragVisuals(el) {
   document.body.classList.remove("is-dragging");
 }
 
-function maybeHighlightWhileDrag(clientX, clientY, force = false) {
+function maybeHighlightWhileDrag(force = false) {
   const now = performance.now();
-  if (!force && now - highlightThrottle < 100) return;
+  if (!force && now - highlightThrottle < 80) return;
   highlightThrottle = now;
-  highlightNearestSlot(state.dragging.piece, clientX, clientY);
+  highlightNearestSlot(state.dragging.piece);
+}
+
+function getDragPieceCenter(piece) {
+  const rect = piece.element.getBoundingClientRect();
+  return {
+    x: rect.left + rect.width / 2,
+    y: rect.top + rect.height / 2,
+  };
+}
+
+function isPieceOverOwnSlot(piece, center, forHighlight) {
+  const geo = state.slotGeometry?.[piece.row]?.[piece.col];
+  const slot = state.slotMap?.[piece.row]?.[piece.col];
+  if (!geo || !slot || slot.piece) return false;
+
+  const w = geo.right - geo.left;
+  const h = geo.bottom - geo.top;
+  const expand = Math.min(w, h) * (forHighlight ? 0.12 : 0.08);
+
+  return (
+    center.x >= geo.left - expand &&
+    center.x <= geo.right + expand &&
+    center.y >= geo.top - expand &&
+    center.y <= geo.bottom + expand
+  );
 }
 
 function getBoardSlotPosition(row, col) {
@@ -711,9 +737,8 @@ function getBoardSlotPosition(row, col) {
   };
 }
 
-function highlightNearestSlot(piece, clientX, clientY) {
-  const drag = state.dragging;
-  if (!drag) return;
+function highlightNearestSlot(piece) {
+  if (!state.dragging) return;
 
   const slot = state.slotMap?.[piece.row]?.[piece.col];
   if (!slot || slot.piece) {
@@ -721,14 +746,8 @@ function highlightNearestSlot(piece, clientX, clientY) {
     return;
   }
 
-  const geo = state.slotGeometry?.[piece.row]?.[piece.col];
-  if (!geo) return;
-
-  const pieceCenterX = clientX - drag.offsetX + drag.halfW;
-  const pieceCenterY = clientY - drag.offsetY + drag.halfH;
-  const dx = pieceCenterX - geo.cx;
-  const dy = pieceCenterY - geo.cy;
-  const shouldHighlight = dx * dx + dy * dy < geo.threshold * geo.threshold;
+  const center = getDragPieceCenter(piece);
+  const shouldHighlight = isPieceOverOwnSlot(piece, center, true);
 
   if (!shouldHighlight) {
     clearSlotHighlights();
@@ -749,26 +768,18 @@ function clearSlotHighlights() {
   }
 }
 
-function findSnapTarget(piece, clientX, clientY) {
-  const drag = state.dragging;
-  if (!drag) return null;
+function findSnapTarget(piece) {
+  if (!state.dragging) return null;
 
   const slot = state.slotMap?.[piece.row]?.[piece.col];
   if (!slot || slot.piece) return null;
 
-  const geo = state.slotGeometry?.[piece.row]?.[piece.col];
-  if (!geo) return null;
-
-  const pieceCenterX = clientX - drag.offsetX + drag.halfW;
-  const pieceCenterY = clientY - drag.offsetY + drag.halfH;
-  const dx = pieceCenterX - geo.cx;
-  const dy = pieceCenterY - geo.cy;
-
-  return dx * dx + dy * dy < geo.threshold * geo.threshold ? slot : null;
+  const center = getDragPieceCenter(piece);
+  return isPieceOverOwnSlot(piece, center, false) ? slot : null;
 }
 
-function trySnapPiece(piece, clientX, clientY) {
-  const target = findSnapTarget(piece, clientX, clientY);
+function trySnapPiece(piece) {
+  const target = findSnapTarget(piece);
   if (!target) return false;
 
   placePiece(piece, target);
